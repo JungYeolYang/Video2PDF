@@ -1,0 +1,13 @@
+fpdf==1.7.2
+ImageHash==4.3.1
+imageio==2.35.1
+lazy_loader==0.4
+networkx==3.3
+numpy==2.1.0
+opencv-python==4.10.0.84
+packaging==24.1
+pillow==10.4.0
+PyWavelets==1.7.0
+scikit-image==0.24.0
+scipy==1.14.1
+tifffile==2024.8.10
