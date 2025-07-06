@@ -19,6 +19,7 @@
     # Windows에서는 PowerShell에서 
     python -m venv myenv
     myenv\Scripts\activate
+    오류나는 경우: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass 실행
     ```
 
 2. **필요한 패키지 설치:**
