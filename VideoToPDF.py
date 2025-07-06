@@ -151,7 +151,21 @@ def images_to_pdf(image_list, output_pdf):
 def main():
     current_dir = os.getcwd()
     video_files = [f for f in os.listdir(current_dir) if f.endswith(('.mp4', '.mov'))]
-
+    video_files = [
+        f for f in os.listdir(current_dir)
+        if f.lower().endswith((
+            '.mp4',
+            '.mov',
+            '.mkv',
+            '.avi',
+            '.flv',
+            '.wmv',
+            '.webm',
+            '.mpeg',
+            '.mpg',
+            '.m4v'
+        ))
+    ]
     # 작업할 영상 파일이 없을 때 메시지를 출력하고 종료
     if not video_files:
         print("작업 대상 영상파일이 없습니다. 확인해주세요")
