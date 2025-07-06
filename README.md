@@ -13,8 +13,12 @@
 1. **Python 가상환경 설정:**
 
     ```bash
+    # MacOS/Linux에서는
     python3 -m venv myenv
-    source myenv/bin/activate  # Windows에서는 `myenv\Scripts\activate`
+    source myenv/bin/activate
+    # Windows에서는 PowerShell에서 
+    python -m venv myenv
+    myenv\Scripts\activate
     ```
 
 2. **필요한 패키지 설치:**
