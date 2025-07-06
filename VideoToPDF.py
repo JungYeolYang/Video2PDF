@@ -11,16 +11,39 @@ from skimage.metrics import structural_similarity as compare_ssim
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def cv2_imread_unicode(path):
+    """한글 경로 포함 이미지 읽기(OpenCV)"""
+    try:
+        stream = np.fromfile(path, dtype=np.uint8)
+        img = cv2.imdecode(stream, cv2.IMREAD_COLOR)
+        return img
+    except Exception as e:
+        logging.warning(f"cv2_imread_unicode failed for {path}: {e}")
+        return None
+
+def cv2_imwrite_unicode(path, img):
+    """한글 경로 포함 이미지 저장(OpenCV)"""
+    try:
+        ext = os.path.splitext(path)[1]
+        result, encoded_img = cv2.imencode(ext, img)
+        if result:
+            with open(path, mode='wb') as f:
+                encoded_img.tofile(f)
+            return True
+        else:
+            logging.warning(f"cv2_imwrite_unicode encoding failed for {path}")
+            return False
+    except Exception as e:
+        logging.warning(f"cv2_imwrite_unicode failed for {path}: {e}")
+        return False
 
 def variance_of_laplacian(image):
     """ Compute the Laplacian of the image and return the variance """
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
-
 def hash_image(img):
     """Calculate hash of the entire image."""
     return imagehash.phash(Image.fromarray(img))
-
 
 def hash_sub_images(img, rows=4, cols=8):
     """Divide image into parts and calculate hash of each part."""
@@ -33,7 +56,6 @@ def hash_sub_images(img, rows=4, cols=8):
             hashes.append(hash_image(sub_img))
     return hashes
 
-
 def is_similar(hash_list1, hash_list2, similarity_threshold=0.90):
     """Compare hash lists to determine if images are similar based on a similarity threshold."""
     assert len(hash_list1) == len(hash_list2), "Hash lists must be of the same length."
@@ -42,14 +64,12 @@ def is_similar(hash_list1, hash_list2, similarity_threshold=0.90):
     similarity = 1 - (total_difference / max_difference)
     return similarity >= similarity_threshold
 
-
 def process_images(folder_path, unique_folder_path):
     image_hashes = {}
     unique_images = []
 
     logging.info(f"Processing images in folder: {folder_path}")
 
-    # Create a folder to store unique images
     if not os.path.exists(unique_folder_path):
         os.makedirs(unique_folder_path)
 
@@ -60,7 +80,7 @@ def process_images(folder_path, unique_folder_path):
 
         logging.info(f"Processing image: {filename}")
 
-        img = cv2.imread(file_path)
+        img = cv2_imread_unicode(file_path)
         if img is None:
             logging.warning(f"Failed to read image: {filename}")
             continue
@@ -78,24 +98,10 @@ def process_images(folder_path, unique_folder_path):
             image_hashes[filename] = img_hashes
             unique_images.append(file_path)
             logging.info(f"Unique image: {filename}")
-
-            # Copy unique image to the unique_folder_path
             shutil.copy(file_path, unique_folder_path)
 
     logging.info("Image processing complete.")
     return unique_images
-
-
-def save_image_safe(img_array, path):
-    """ Use PIL to safely save images to paths with Unicode characters """
-    try:
-        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(img_rgb)
-        pil_img.save(path)
-        logging.info(f"Successfully saved image: {path}")
-    except Exception as e:
-        logging.error(f"Failed to save image with PIL: {path} -> {e}")
-
 
 def extract_frames(video_path, output_folder, interval):
     logging.info(f"Starting frame extraction for video: {video_path}")
@@ -131,11 +137,11 @@ def extract_frames(video_path, output_folder, interval):
         if (current_frame + 1) % int(frame_rate * interval) == 0 and best_image is not None:
             img_filename = f"frame_{str(current_frame + 1).zfill(num_digits)}.jpg"
             img_path = os.path.join(output_folder, img_filename)
-
-            logging.info(f"Trying to save image: {img_path}")
-            save_image_safe(best_image, img_path)
-
-            extracted_images.append(img_path)
+            if not cv2_imwrite_unicode(img_path, best_image):
+                logging.warning(f"Failed to save extracted frame: {img_path}")
+            else:
+                extracted_images.append(img_path)
+                logging.info(f"Extracted frame saved: {img_path}")
             best_image = None
             best_focus = 0
 
@@ -146,25 +152,60 @@ def extract_frames(video_path, output_folder, interval):
     logging.info("Frame extraction complete.")
     return extracted_images
 
-
 def images_to_pdf(image_list, output_pdf):
-    pdf = FPDF()
+    pdf = FPDF(unit="mm")
 
-    # Sort image filenames
     image_list.sort()
 
-    for image in image_list:
-        pdf.add_page()
-        logging.info(f"Adding image to PDF: {image}")
-        pdf.image(image, x=10, y=10, w=190)
+    for image_path in image_list:
+        # 이미지 크기 확인
+        with Image.open(image_path) as img:
+            width, height = img.size
+
+        if width >= height:
+            orientation = 'L'
+            page_width, page_height = 297, 210  # A4 가로
+        else:
+            orientation = 'P'
+            page_width, page_height = 210, 297  # A4 세로
+
+        pdf.add_page(orientation=orientation)
+        logging.info(f"Adding image to PDF ({orientation}): {image_path}")
+
+        # 비율 유지하면서 최대 크기 계산
+        aspect = width / height
+        max_w, max_h = page_width - 20, page_height - 20
+
+        if aspect > 1:
+            w = max_w
+            h = w / aspect
+            if h > max_h:
+                h = max_h
+                w = h * aspect
+        else:
+            h = max_h
+            w = h * aspect
+            if w > max_w:
+                w = max_w
+                h = w / aspect
+
+        x = (page_width - w) / 2
+        y = (page_height - h) / 2
+
+        pdf.image(image_path, x=x, y=y, w=w, h=h)
 
     pdf.output(output_pdf, "F")
     logging.info(f"PDF saved as: {output_pdf}")
 
-
 def main():
     current_dir = os.getcwd()
-    video_files = [f for f in os.listdir(current_dir) if f.endswith(('.mp4', '.mov', '.avi', '.mkv', '.flv', '.webm', '.m4v', '.wmv'))]
+
+    video_extensions = (
+        '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv',
+        '.m4v', '.mpeg', '.mpg', '.webm'
+    )
+
+    video_files = [f for f in os.listdir(current_dir) if f.lower().endswith(video_extensions)]
 
     if not video_files:
         print("작업 대상 영상파일이 없습니다. 확인해주세요")
@@ -176,17 +217,12 @@ def main():
         video_path = os.path.join(current_dir, video_file)
         base_name = os.path.splitext(video_file)[0]
         output_folder = os.path.join(current_dir, base_name)
-
         unique_folder_path = os.path.join(os.path.dirname(video_path), base_name + "_unique_images")
-
         output_pdf = os.path.join(current_dir, f"{base_name}.pdf")
 
         extracted_images = extract_frames(video_path, output_folder, interval)
-
         unique_images = process_images(output_folder, unique_folder_path)
-
         images_to_pdf(unique_images, output_pdf)
-
 
 if __name__ == "__main__":
     main()
